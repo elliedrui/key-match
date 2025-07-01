@@ -228,8 +228,8 @@
         <div class="controls-panel">
             <div class="slider-container">
                 <label for="speedSlider">Element Speed</label>
-                <input type="range" id="speedSlider" class="slider" min="1" max="6" value="3" step="0.5">
-                <div class="slider-value" id="speedValue">3.0s (Normal)</div>
+                <input type="range" id="speedSlider" class="slider" min="1" max="6" value="4.5" step="0.5">
+                <div class="slider-value" id="speedValue">4.5s (Slower)</div>
             </div>
             
             <div class="slider-container">
@@ -249,14 +249,11 @@
 
     <script>
         let gameRunning = false;
-        let currentLetter = '';
-        let currentArrow = '';
-        let letterPressed = false;
-        let arrowPressed = false;
         let gameInterval;
         let resultTimeout;
-        let currentSpeed = 3; // seconds
+        let currentSpeed = 4.5; // seconds
         let currentSpacing = 1.5; // seconds between rounds
+        let activePairs = new Map(); // Track active letter/arrow pairs
 
         const letters = ['A', 'S', 'D', 'W'];
         const arrows = ['↑', '↓', '←', '→'];
@@ -329,17 +326,24 @@
             }
             clearResult();
             clearElements();
-            letterPressed = false;
-            arrowPressed = false;
+            activePairs.clear();
         }
 
         function spawnElements() {
-            letterPressed = false;
-            arrowPressed = false;
-            
             // Random letter and arrow
             const newLetter = letters[Math.floor(Math.random() * letters.length)];
             const newArrow = arrows[Math.floor(Math.random() * arrows.length)];
+            
+            // Create unique pair ID
+            const pairId = Date.now() + Math.random();
+            
+            // Track this pair
+            activePairs.set(pairId, {
+                letter: newLetter,
+                arrow: newArrow,
+                letterPressed: false,
+                arrowPressed: false
+            });
             
             // Create letter element with dynamic speed
             const letterEl = document.createElement('div');
@@ -347,6 +351,7 @@
             letterEl.textContent = newLetter;
             letterEl.style.animationDuration = currentSpeed + 's';
             letterEl.setAttribute('data-letter', newLetter);
+            letterEl.setAttribute('data-pair', pairId);
             document.querySelector('.game-container').appendChild(letterEl);
             
             // Create arrow element with dynamic speed
@@ -355,17 +360,13 @@
             arrowEl.textContent = newArrow;
             arrowEl.style.animationDuration = currentSpeed + 's';
             arrowEl.setAttribute('data-arrow', newArrow);
-            document.querySelector('.game-container').appendChild(arrowEl);
-            
-            // Set up timing for this specific pair
-            const pairId = Date.now() + Math.random();
-            letterEl.setAttribute('data-pair', pairId);
             arrowEl.setAttribute('data-pair', pairId);
+            document.querySelector('.game-container').appendChild(arrowEl);
             
             // Check for success after elements reach boxes
             setTimeout(() => {
-                if (gameRunning && letterEl.parentNode && arrowEl.parentNode) {
-                    checkResultForPair(newLetter, newArrow, pairId);
+                if (gameRunning && activePairs.has(pairId)) {
+                    checkResultForPair(pairId);
                 }
             }, currentSpeed * 1000);
             
@@ -373,6 +374,7 @@
             setTimeout(() => {
                 if (letterEl.parentNode) letterEl.remove();
                 if (arrowEl.parentNode) arrowEl.remove();
+                activePairs.delete(pairId);
             }, (currentSpeed * 1000) + 500);
         }
 
@@ -383,29 +385,16 @@
             arrows.forEach(el => el.remove());
         }
 
-        function checkResultForPair(letter, arrow, pairId) {
-            // Check if the correct keys were pressed for this specific pair
-            const activeElements = document.querySelectorAll(`[data-pair="${pairId}"]`);
-            if (activeElements.length === 2) {
-                // This pair is still active, check if correct keys were pressed
-                if (letterPressed && arrowPressed && 
-                    currentLetter === letter && currentArrow === arrow) {
+        function checkResultForPair(pairId) {
+            const pair = activePairs.get(pairId);
+            if (pair) {
+                if (pair.letterPressed && pair.arrowPressed) {
                     showResult('WIN', true);
                     playWinSound();
                 } else {
                     showResult('FAIL', false);
                     playFailSound();
                 }
-            }
-        }
-
-        function checkResult() {
-            if (letterPressed && arrowPressed) {
-                showResult('WIN', true);
-                playWinSound();
-            } else {
-                showResult('FAIL', false);
-                playFailSound();
             }
         }
 
@@ -436,27 +425,18 @@
         document.addEventListener('keydown', (e) => {
             if (!gameRunning) return;
             
-            // Get the most recent elements that are currently active
-            const activeLetters = document.querySelectorAll('.letter');
-            const activeArrows = document.querySelectorAll('.arrow');
-            
-            if (activeLetters.length > 0 && activeArrows.length > 0) {
-                const mostRecentLetter = activeLetters[activeLetters.length - 1];
-                const mostRecentArrow = activeArrows[activeArrows.length - 1];
+            // Check all active pairs to see if this key press matches any
+            for (let [pairId, pair] of activePairs) {
+                // Check letter keys
+                if (e.key.toUpperCase() === pair.letter) {
+                    pair.letterPressed = true;
+                }
                 
-                currentLetter = mostRecentLetter.textContent;
-                currentArrow = mostRecentArrow.textContent;
-            }
-            
-            // Check letter keys
-            if (e.key.toUpperCase() === currentLetter) {
-                letterPressed = true;
-            }
-            
-            // Check arrow keys
-            const arrowIndex = arrowKeys.indexOf(e.key);
-            if (arrowIndex !== -1 && arrows[arrowIndex] === currentArrow) {
-                arrowPressed = true;
+                // Check arrow keys
+                const arrowIndex = arrowKeys.indexOf(e.key);
+                if (arrowIndex !== -1 && arrows[arrowIndex] === pair.arrow) {
+                    pair.arrowPressed = true;
+                }
             }
         });
 
